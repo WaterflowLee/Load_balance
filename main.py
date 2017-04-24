@@ -1,6 +1,7 @@
 #!coding:utf-8
 from system import ram_generator_factory,\
 	bandwidth_generator_factory, request_generator_factory, position_generator_factory, Simulator
+from dispatcher import Dispatcher
 
 machine_num = 100
 service_num = 20
@@ -28,3 +29,7 @@ sim.ram_generator([machine_ram_generator, service_ram_generator])\
 # sim.active() 等价于 sim.machine_factory().service_factory().request_factory()
 sim.machine_factory().service_factory().request_factory()
 print sim._services[2].unique_id
+
+dispatcher = Dispatcher(sim, 10, 300).machine_load_rank()\
+	.machine_slave_dispatch_round_0().machine_slave_dispatch_round_1().machine_slave_dispatch_round_2()
+dispatcher.print_info()

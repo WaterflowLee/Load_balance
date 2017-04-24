@@ -25,6 +25,28 @@ class Machine(CommonObject):
 		self._ram = ram
 		self._bandwidth = bandwidth
 		self._position = position
+		self._cur_ram = ram
+		self._cur_bandwidth = bandwidth
+
+	@property
+	def position(self):
+		return self._position
+
+	@property
+	def cur_ram(self):
+		return self._cur_ram
+
+	@cur_ram.setter
+	def cur_ram(self, r):
+		self._cur_ram = r
+
+	@property
+	def cur_bandwidth(self):
+		return self._cur_bandwidth
+
+	@cur_bandwidth.setter
+	def cur_bandwidth(self, b):
+		self._cur_bandwidth = b
 
 
 class Service(CommonObject):
@@ -40,6 +62,15 @@ class Request(CommonObject):
 		self._machine = machine_service_tuple[0]
 		self._service = machine_service_tuple[1]
 
+	@property
+	def machine(self):
+		return self._machine
+
+	@property
+	def service(self):
+		return self._service
+
+
 
 class Simulator(object):
 	def __init__(self, machine_num, service_num, request_num):
@@ -47,9 +78,9 @@ class Simulator(object):
 		self._machine_num = machine_num
 		self._service_num = service_num
 		self._request_num = request_num
-		self._machines = []
-		self._services = []
-		self._requests = []
+		self._machines = {}
+		self._services = {}
+		self._requests = {}
 		self._machine_ram_generator = None
 		self._service_ram_generator = None
 		self._machine_bandwidth_generator = None
@@ -80,25 +111,37 @@ class Simulator(object):
 	def machine_factory(self):
 		for i in range(self._machine_num):
 			m = Machine(self._machine_ram_generator(), self._machine_bandwidth_generator(), self._position_generator(), i)
-			self._machines.append(m)
+			self._machines[i] = m
 		return self
 
 	def service_factory(self):
 		for i in range(self._service_num):
 			s = Service(self._service_ram_generator(), self._service_bandwidth_generator(), i)
-			self._services.append(s)
+			self._services[i] = s
 		return self
 
 	def request_factory(self):
 		for i in range(self._request_num):
 			r = Request(self._request_generator(), i)
-			self._requests.append(r)
+			self._requests[i] = r
 		return self
 
 	def active(self):
 		self.machine_factory()
 		self.service_factory()
 		self.request_factory()
+
+	@property
+	def machines(self):
+		return self._machines
+
+	@property
+	def services(self):
+		return self._services
+
+	@property
+	def requests(self):
+		return self._requests
 
 
 def ram_generator_factory(lower, upper, generator_type="uniform_distribution"):
