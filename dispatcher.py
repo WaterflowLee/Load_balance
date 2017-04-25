@@ -93,8 +93,8 @@ class Dispatcher(object):
 					self._to_dispatch_machine_slaves.remove(nearest_slave_id)
 					too_busy_slave_list = []
 					if LOG_INTO_JSON_FILE:
-						LOGS.append({"machine_load_district_dist": copy.copy(self._machine_load_district_dist),
-								"machine_district_dispatch_result": copy.copy(self._machine_district_dispatch_result)})
+						LOGS.append({"machine_load_district_dist": copy.deepcopy(self._machine_load_district_dist),
+								"machine_district_dispatch_result": copy.deepcopy(self._machine_district_dispatch_result)})
 				else:
 					too_busy_slave_list.append(nearest_slave_id)
 			else:
