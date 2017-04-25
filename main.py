@@ -28,7 +28,7 @@ sim.ram_generator([machine_ram_generator, service_ram_generator])\
 
 # sim.active() 等价于 sim.machine_factory().service_factory().request_factory()
 sim.machine_factory().service_factory().request_factory()
-print sim._services[2].unique_id
+# print sim._services[2].unique_id
 
 dispatcher = Dispatcher(sim, 10, 300).machine_load_rank()\
 	.machine_slave_dispatch_round_0().machine_slave_dispatch_round_1().machine_slave_dispatch_round_2()

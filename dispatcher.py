@@ -3,6 +3,12 @@ from collections import defaultdict
 import numpy as np
 import pprint
 import copy
+import json
+
+
+LOG_INTO_JSON_FILE = True
+LOGS = []
+INFOS = {}
 
 
 def machine_mutual_distance(m_1, m_2):
@@ -24,7 +30,7 @@ class Dispatcher(object):
 		self._to_dispatch_machine_districts = []
 		self._machine_load_district_average = len(self._simulator.requests.values())/float(self._machine_master_num)
 		self._machine_load_district_dist = {}  # dict key:id; value:district load sum 用master的id赋予区域的id
-		self._machine_district_dispatch_result = defaultdict(set)
+		self._machine_district_dispatch_result = defaultdict(list)
 		self._master_slave_distance_matrix = {}
 
 	def find_nearest_slave(self, master, too_busy_slave_list):
@@ -83,15 +89,22 @@ class Dispatcher(object):
 				nearest_slave_id, nearest_slave_distance = ret
 				if idlest_district_load + self._machine_load_cnt[nearest_slave_id] < self._machine_load_district_average:
 					self._machine_load_district_dist[idlest_district_id] += self._machine_load_cnt[nearest_slave_id]
-					self._machine_district_dispatch_result[idlest_district_id].add(nearest_slave_id)
+					self._machine_district_dispatch_result[idlest_district_id].append(nearest_slave_id)
 					self._to_dispatch_machine_slaves.remove(nearest_slave_id)
 					too_busy_slave_list = []
+					if LOG_INTO_JSON_FILE:
+						LOGS.append({"machine_load_district_dist": copy.copy(self._machine_load_district_dist),
+								"machine_district_dispatch_result": copy.copy(self._machine_district_dispatch_result)})
 				else:
 					too_busy_slave_list.append(nearest_slave_id)
 			else:
 				print "District %s can not be dispatched anymore" % idlest_district_id
 				self._to_dispatch_machine_districts.remove(idlest_district_id)
 				too_busy_slave_list = []
+		if LOG_INTO_JSON_FILE:
+			INFOS["position"] = dict([(m.unique_id, m.position) for m in self._simulator.machines.values()])
+			INFOS["load"] = self._machine_load_cnt
+			json.dump({"LOGS": LOGS, "INFOS": INFOS}, open("round_1.json", "w"))
 		print "Finish Round 1 Dispatching"
 		return self
 
@@ -99,7 +112,7 @@ class Dispatcher(object):
 		for slave_id in self._to_dispatch_machine_slaves:
 			district_id, district_distance = self.find_nearest_master(slave_id)
 			self._machine_load_district_dist[district_id] += self._machine_load_cnt[slave_id]
-			self._machine_district_dispatch_result[district_id].add(slave_id)
+			self._machine_district_dispatch_result[district_id].append(slave_id)
 		print "Finish Round 2 Dispatching"
 		return self
 
