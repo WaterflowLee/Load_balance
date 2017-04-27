@@ -14,22 +14,26 @@ service_ram_generator = ram_generator_factory(128, 128*2)
 machine_bandwidth_generator = bandwidth_generator_factory(100, 100*4)
 service_bandwidth_generator = bandwidth_generator_factory(10, 10*2)
 
-machine_id_list = range(machine_num)
-service_id_list = range(service_num)
-request_generator = request_generator_factory(machine_id_list, service_id_list)
-
 position_generator = position_generator_factory((0, 1000), (0, 1000))
 
 # chain rule
 sim.ram_generator([machine_ram_generator, service_ram_generator])\
 	.bandwidth_generator([machine_bandwidth_generator, service_bandwidth_generator])\
-	.request_generator(request_generator)\
 	.position_generator(position_generator)
 
-# sim.active() 等价于 sim.machine_factory().service_factory().request_factory()
-sim.machine_factory().service_factory().request_factory()
-# print sim._services[2].unique_id
+# sim.active() 等价于 sim.machine_factory().service_factory()
+sim.machine_factory().service_factory()
 
-dispatcher = Dispatcher(sim, 10, 300).machine_load_rank()\
+service_id_list = sim.services.keys()
+machine_id_list = sim.machines.keys()
+request_generator = request_generator_factory(machine_id_list, service_id_list)
+
+sim.request_generator(request_generator).request_factory()
+
+
+print sim.services
+
+dispatcher = Dispatcher(sim, 10, 300)\
 	.machine_slave_dispatch_round_0().machine_slave_dispatch_round_1().machine_slave_dispatch_round_2()
-dispatcher.print_info()
+# dispatcher.print_info()
+# print dispatcher._district_machine_dispatch_result[98]
