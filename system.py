@@ -2,9 +2,6 @@
 import numpy as np
 np.random.seed(0)
 from collections import defaultdict
-# s = Student()
-# s.score = 60 # OK，实际转化为s.set_score(60)
-# s.score # OK，实际转化为s.get_score()
 
 
 class CommonObject(object):
