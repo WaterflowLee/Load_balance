@@ -43,8 +43,13 @@ class Machine(CommonObject):
 
 	# request : Request Object
 	def receive_request(self, request):
-		self._request_queue.append(request)
-		self.service_access_logging(request)
+		if isinstance(request, list):
+			for r in request:
+				self._request_queue.append(r)
+				self.service_access_logging(r)
+		else:
+			self._request_queue.append(request)
+			self.service_access_logging(request)
 
 	# request : Request Object
 	def serve_request(self, request):
@@ -157,12 +162,18 @@ class Machine(CommonObject):
 
 class Service(CommonObject):
 	static_unique_id = 0
+	services = {}
+
+	@classmethod
+	def get_service_by_id(cls, unique_id):
+		return cls.services[unique_id]
 
 	def __init__(self, ram, bandwidth):
 		super(Service, self).__init__(Service.static_unique_id)
 		self._ram = ram
 		self._bandwidth = bandwidth
 		self._deployment = []
+		Service.services[Service.static_unique_id] = self
 		Service.static_unique_id += 1
 
 	@property
@@ -206,6 +217,10 @@ class Request(CommonObject):
 	@property
 	def source(self):
 		return self._source
+
+	@source.setter
+	def source(self, s):
+		self._source = s
 
 
 class District(CommonObject):
@@ -278,7 +293,7 @@ class District(CommonObject):
 	def service_deploy_log(self):
 		service_deploy_log = defaultdict(list)
 		for machine in self.machines:
-			for service in machine.service_pool:
+			for service in machine.service_pool.values():
 				service_deploy_log[service.unique_id].append(machine)
 		return service_deploy_log
 

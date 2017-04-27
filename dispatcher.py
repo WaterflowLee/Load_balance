@@ -159,10 +159,10 @@ class Dispatcher(object):
 				slave = self._simulator.machines[slave_id]
 				self._master_slave_distance_matrix[master_id][slave_id] = Dispatcher.machine_mutual_distance(master, slave)
 
-	def get_service_spots_num_in_district(self, service_id, district):
-		access_num = district.service_access_log[service_id]
-		consumed_bandwidth = self._simulator.services[service_id].consumed_bandwidth * access_num
-		return int(float(consumed_bandwidth)/self._simulator.machine_average_bandwidth)
+	def get_service_spots_num_in_district(self, service, district):
+		access_num = district.service_access_log[service.unique_id]
+		consumed_bandwidth = service.consumed_bandwidth * access_num
+		return int(float(consumed_bandwidth)/self._simulator.machine_average_bandwidth) + 1
 
 	def unload_overload_server(self, server, service):
 		# 卸载只能卸载非本地的请求

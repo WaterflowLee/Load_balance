@@ -2,6 +2,7 @@
 from system import ram_generator_factory,\
 	bandwidth_generator_factory, request_generator_factory, position_generator_factory, Simulator
 from dispatcher import Dispatcher
+from system import District, Service
 
 machine_num = 100
 service_num = 20
@@ -35,5 +36,12 @@ print sim.services
 
 dispatcher = Dispatcher(sim, 10, 300)\
 	.machine_slave_dispatch_round_0().machine_slave_dispatch_round_1().machine_slave_dispatch_round_2()
+
+district = District.districts.values()[0]
+service_id = district.service_access_log.keys()[0]
+service = Service.get_service_by_id(service_id)
+print dispatcher.get_service_spots_num_in_district(service, district)
+dispatcher.init_service_server_in_district(service, district, 1)
+dispatcher.dispatch_server_in_district(service, district)
 # dispatcher.print_info()
 # print dispatcher._district_machine_dispatch_result[98]
