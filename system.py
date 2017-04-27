@@ -41,60 +41,6 @@ class Machine(CommonObject):
 		self._service_access_log = defaultdict(int)
 		Machine.static_unique_id += 1
 
-	@property
-	def district(self):
-		return self._district
-
-	@district.setter
-	def district(self, d):
-		self._district = d
-
-	@property
-	def ram(self):
-		return self._ram
-
-	@property
-	def bandwidth(self):
-		return self._bandwidth
-
-	@property
-	def position(self):
-		return self._position
-
-	@property
-	def cur_ram(self):
-		return self._cur_ram
-
-	@property
-	def cur_bandwidth(self):
-		return self._cur_bandwidth
-
-	@property
-	def request_queue(self):
-		return self._request_queue
-
-	@property
-	def serving_request(self):
-		return self._serving_request
-
-	@property
-	def load(self):
-		return np.sum(self._service_access_log.values())
-
-	@property
-	def service_access_log(self):
-		return self._service_access_log
-
-	def service_access_logging(self, request, mode=True):
-		if mode:
-			self._service_access_log[request.service.unique_id] += 1
-		else:
-			self._service_access_log[request.service.unique_id] -= 1
-
-	@property
-	def service_pool(self):
-		return self._service_pool
-
 	# request : Request Object
 	def receive_request(self, request):
 		self._request_queue.append(request)
@@ -153,6 +99,60 @@ class Machine(CommonObject):
 		self._cur_ram -= service.consumed_ram
 		service.deploy(self)
 		return self
+
+	def service_access_logging(self, request, mode=True):
+		if mode:
+			self._service_access_log[request.service.unique_id] += 1
+		else:
+			self._service_access_log[request.service.unique_id] -= 1
+
+	@property
+	def district(self):
+		return self._district
+
+	@district.setter
+	def district(self, d):
+		self._district = d
+
+	@property
+	def ram(self):
+		return self._ram
+
+	@property
+	def bandwidth(self):
+		return self._bandwidth
+
+	@property
+	def position(self):
+		return self._position
+
+	@property
+	def cur_ram(self):
+		return self._cur_ram
+
+	@property
+	def cur_bandwidth(self):
+		return self._cur_bandwidth
+
+	@property
+	def request_queue(self):
+		return self._request_queue
+
+	@property
+	def serving_request(self):
+		return self._serving_request
+
+	@property
+	def load(self):
+		return np.sum(self._service_access_log.values())
+
+	@property
+	def service_access_log(self):
+		return self._service_access_log
+
+	@property
+	def service_pool(self):
+		return self._service_pool
 
 
 class Service(CommonObject):
@@ -230,6 +230,15 @@ class District(CommonObject):
 		master.district = self
 		self._expandable = True
 
+	def add_slave(self, slave):
+		if isinstance(slave, list):
+			for s in slave:
+				self._slaves.append(s)
+				s.district = self
+		else:
+			self._slaves.append(slave)
+			slave.district = self
+
 	@property
 	def machines(self):
 		return [self._master] + self._slaves
@@ -241,15 +250,6 @@ class District(CommonObject):
 	@property
 	def slaves(self):
 		return self._slaves
-
-	def add_slave(self, slave):
-		if isinstance(slave, list):
-			for s in slave:
-				self._slaves.append(s)
-				s.district = self
-		else:
-			self._slaves.append(slave)
-			slave.district = self
 
 	@property
 	def load(self):
