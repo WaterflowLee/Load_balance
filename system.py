@@ -39,70 +39,78 @@ class Machine(CommonObject):
 		self._serving_request = []
 		self._service_pool = {}
 		self._service_access_log = defaultdict(int)
+		self._service_server = {}
+		self._service_client = defaultdict(list)
 		Machine.static_unique_id += 1
 
 	# request : Request Object
 	def receive_request(self, request):
+		def receive_single_request(r):
+			self._request_queue.append(r)
+			self.service_access_logging(r)
+			if r.source not in self._service_client[r.service.unique_id]:
+				self._service_client[r.service.unique_id].append(r.source)
+
 		if isinstance(request, list):
 			for r in request:
-				self._request_queue.append(r)
-				self.service_access_logging(r)
+				receive_single_request(r)
 		else:
-			self._request_queue.append(request)
-			self.service_access_logging(request)
+			receive_single_request(request)
 
 	# request : Request Object
 	def serve_request(self, request):
+		def serve_single_request(r):
+			consumed_bandwidth = r.service.consumed_bandwidth
+			self._cur_bandwidth -= consumed_bandwidth
+			self._request_queue.remove(r)
+			self._serving_request.append(r)
+
 		if isinstance(request, list):
 			for r in request:
-				consumed_bandwidth = r.service.consumed_bandwidth
-				self._cur_bandwidth -= consumed_bandwidth
-				self._request_queue.remove(r)
-				self._serving_request.append(r)
+				serve_single_request(r)
 		else:
-			consumed_bandwidth = request.service.consumed_bandwidth
-			self._cur_bandwidth -= consumed_bandwidth
-			self._request_queue.remove(request)
-			self._serving_request.append(request)
+			serve_single_request(request)
 		return self
 
 	def stop_serving_request(self, request):
+		def stop_serving_single_request(r):
+			self._serving_request.remove(r)
+			self._request_queue.append(r)
+			self._cur_bandwidth += r.service.consumed_bandwidth
+
 		if isinstance(request, list):
 			for r in request:
-				self._serving_request.remove(r)
-				self._request_queue.append(r)
-				self._cur_bandwidth += r.service.consumed_bandwidth
+				stop_serving_single_request(r)
 		else:
-			self._serving_request.remove(request)
-			self._request_queue.append(request)
-			self._cur_bandwidth += request.service.consumed_bandwidth
+			stop_serving_single_request(request)
 
-	def send_request(self, request):
-			if isinstance(request, list):
-				for r in request:
-					self._request_queue.remove(r)
-					self.service_access_logging(r, mode=False)
-					if r.machine.unique_id == self.unique_id:
-						# send forth
-						r.source = self
-					else:
-						# send back
-						r.source = "user"
+	def send_request(self, request, server):
+		def send_single_request(r):
+			self._request_queue.remove(r)
+			self.service_access_logging(r, mode=False)
+			if r.source == "user":
+				# send forth
+				r.source = self
+				self.set_service_server(r.service, server)
 			else:
-				self._request_queue.remove(request)
-				self.service_access_logging(request, mode=False)
-				if request.machine.unique_id == self.unique_id:
-					# send forth
-					request.source = self
-				else:
-					# send back
-					request.source = "user"
+				# send back
+				if r.source in self._service_client[r.service.unique_id]:
+					self._service_client[r.service.unique_id].remove(r.source)
+					r.source.set_service_server(r.service, r.source)
+				r.source = "user"
+
+		if isinstance(request, list):
+			for r in request:
+				send_single_request(r)
+		else:
+			send_single_request(request)
 
 	# service : Service Object
 	def deploy_service(self, service):
 		self._service_pool[service.unique_id] = service
 		self._cur_ram -= service.consumed_ram
 		service.deploy(self)
+		self.set_service_server(service, self)
 		return self
 
 	def service_access_logging(self, request, mode=True):
@@ -110,6 +118,9 @@ class Machine(CommonObject):
 			self._service_access_log[request.service.unique_id] += 1
 		else:
 			self._service_access_log[request.service.unique_id] -= 1
+
+	def set_service_server(self, service, server):
+		self._service_server[service.unique_id] = server
 
 	@property
 	def district(self):
@@ -158,6 +169,27 @@ class Machine(CommonObject):
 	@property
 	def service_pool(self):
 		return self._service_pool
+
+	@property
+	def service_server(self):
+		return self._service_server
+
+	@property
+	def service_client(self):
+		return self._service_client
+
+class Backend(Machine):
+	def __init__(self):
+		super(Backend, self).__init__(np.inf, np.inf, (np.inf, np.inf))
+		self._distance = None
+
+	@property
+	def distance(self):
+		return self._distance
+
+	@distance.setter
+	def distance(self, d):
+		self._distance = d
 
 
 class Service(CommonObject):
@@ -299,8 +331,10 @@ class District(CommonObject):
 
 
 class Simulator(object):
-	def __init__(self, machine_num, service_num, request_num):
+	def __init__(self, machine_num, service_num, request_num, distance):
 		super(Simulator, self).__init__()
+		self._backend = Backend()
+		self._backend.distance = distance
 		self._machine_num = machine_num
 		self._service_num = service_num
 		self._request_num = request_num
@@ -376,6 +410,14 @@ class Simulator(object):
 		for machine in self._machines.values():
 			bandwidth += machine.bandwidth
 		return float(bandwidth)/self._machine_num
+
+	@property
+	def backend(self):
+		return self._backend
+
+	@backend.setter
+	def backend(self, backend_machine):
+		self._backend = backend_machine
 
 
 def ram_generator_factory(lower, upper, generator_type="uniform_distribution"):

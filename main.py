@@ -2,12 +2,13 @@
 from system import ram_generator_factory,\
 	bandwidth_generator_factory, request_generator_factory, position_generator_factory, Simulator
 from dispatcher import Dispatcher
-from system import District, Service
+from system import District, Service, Machine
+import numpy as np
 
 machine_num = 100
 service_num = 20
 request_num = 1000
-sim = Simulator(machine_num, service_num, request_num)
+sim = Simulator(machine_num, service_num, request_num, np.sqrt(2) * 1000)
 
 machine_ram_generator = ram_generator_factory(1024, 1024*4)
 service_ram_generator = ram_generator_factory(128, 128*2)

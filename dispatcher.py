@@ -13,11 +13,13 @@ BACKEND_DISTANCE = 1000
 
 
 class Dispatcher(object):
-	def __init__(self, sim, machine_master_num, distance_threshold):
+	def __init__(self, sim, machine_master_num, distance_threshold, delay_distance_discount=0.5, local_delay=0):
 		super(Dispatcher, self).__init__()
 		self._simulator = sim
 		self._machine_master_num = machine_master_num
+		self._delay_distance_discount = delay_distance_discount
 		District.max_radius = distance_threshold
+		self._local_delay = local_delay
 
 		self._machine_load_rank = None  # list of id in load's desc order
 		self._master_slave_distance_matrix = {}
@@ -110,6 +112,7 @@ class Dispatcher(object):
 						if r.service.unique_id == service.unique_id:
 							requests_to_be_sent_forth.append(r)
 					client.send_request(requests_to_be_sent_forth)
+					client.set_service_server(service, server)
 					server.receive_request(requests_to_be_sent_forth)
 					server.serve_request(requests_to_be_sent_forth)
 				else:
@@ -175,12 +178,14 @@ class Dispatcher(object):
 			requests_num_groupby_client[r.source.unique_id] += 1
 		unloaded_client_list = []
 		for client_id in sorted(requests_num_groupby_client, key=lambda k: requests_from_machine[k]):
+			client = self._simulator.machines[client_id]
 			server.stop_serving_request(requests_to_be_sent_back[client_id])
 			# 伪装user将请求 send back
 			server.send_request(requests_to_be_sent_back[client_id])
 			# 由于在这些请求被client发送到server之前，已经消除过client端的服务访问日志，除了这些请求的source被修改成了client之外好似这些请求并未到达过client
 			# 因此可以安全地使用client的receive_request接受请求并增加服务访问日志
-			self._simulator.machines[client_id].receive_request(requests_to_be_sent_back[client_id])
+			client.receive_request(requests_to_be_sent_back[client_id])
+			client.set_service_server(service, None)
 			unloaded_client_list.append(client_id)
 			if server.cur_bandwidth > 0:
 				break
@@ -188,6 +193,17 @@ class Dispatcher(object):
 			return unloaded_client_list, True
 		else:
 			return unloaded_client_list, False
+
+	def cal_service_delay_in_district(self, service, district):
+		delay = 0
+		for client in district.machines:
+			server = client.service_server.get(service.unique_id, None)
+			if not server:
+				distance = Dispatcher.machine_mutual_distance(server, client)
+			else:
+				distance = self._simulator.backend.distance
+			delay = delay + self._local_delay + distance * self._delay_distance_discount
+		return delay
 
 	@staticmethod
 	def machine_mutual_distance(m_1, m_2):
