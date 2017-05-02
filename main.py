@@ -35,15 +35,16 @@ sim.request_generator(request_generator).request_factory()
 
 print sim.services
 
-dispatcher = Dispatcher(sim, 10, 300)\
-	.machine_slave_dispatch_round_0().machine_slave_dispatch_round_1().machine_slave_dispatch_round_2()
+dispatcher = Dispatcher(sim, 10, 300)
+dispatcher.stage_1()
+dispatcher.stage_2()
 
-district = District.districts.values()[0]
-service_id = district.service_access_log.keys()[0]
-service = Service.get_service_by_id(service_id)
-print dispatcher.get_service_spots_num_in_district(service, district)
-dispatcher.init_service_server_in_district(service, district, 1)
-dispatcher.dispatch_server_in_district(service, district)
-# dispatcher.print_info()
-# print dispatcher._district_machine_dispatch_result[98]
-dispatcher.minimize_service_delay_in_district(service, district)
+# district = District.districts.values()[0]
+# service_id = district.service_access_log.keys()[0]
+# service = Service.get_service_by_id(service_id)
+# print dispatcher.get_service_spots_num_in_district(service, district)
+# dispatcher.init_service_server_in_district(service, district, 1)
+# dispatcher.dispatch_server_in_district(service, district)
+# # dispatcher.print_info()
+# # print dispatcher._district_machine_dispatch_result[98]
+# dispatcher.minimize_service_delay_in_district(service, district)

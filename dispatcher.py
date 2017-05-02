@@ -13,7 +13,7 @@ BACKEND_DISTANCE = 1000
 
 
 class Dispatcher(object):
-	def __init__(self, sim, machine_master_num, distance_threshold, delay_distance_discount=0.5, local_delay=0):
+	def __init__(self, sim, machine_master_num, distance_threshold, delay_distance_discount=0.5, local_delay=20):
 		super(Dispatcher, self).__init__()
 		self._simulator = sim
 		self._machine_master_num = machine_master_num
@@ -91,7 +91,7 @@ class Dispatcher(object):
 			if machine.cur_bandwidth > consumed_bandwidth:
 				cur_spots_num += 1
 				request_from_user_list = [r for r in machine.request_queue if r.source == "user" and r.service.unique_id == service.unique_id]
-				machine.deploy_service(service).serve_request(request_from_user_list)
+				machine.deploy_service(service).receive_request(request_from_user_list).serve_request(request_from_user_list)
 				# self._district_service_dispatch_result[district_id][service_id].append(machine_id)
 				# 上面这一语句被简化掉，是因为上面部署服务的时候机器、服务、机器内含区域信息综合替代了调度器
 				# 维护的这一个字典
@@ -121,7 +121,7 @@ class Dispatcher(object):
 				if not status:
 					print "unload service %s from server %s failed" % (service.unique_id, machine.unique_id)
 				else:
-					print "unload %s from server %s" % (", ".join(unloaded_clients), machine.unique_id)
+					print "unload %s from server %s" % (", ".join(map(str, unloaded_clients)), machine.unique_id)
 
 	def minimize_service_delay_in_district(self, service, district):
 		service_id = service.unique_id
@@ -166,10 +166,10 @@ class Dispatcher(object):
 				new_delay = self.cal_service_delay_in_district(self._simulator.services[service_id],
 																self._simulator.districts[district_id])
 				# 如果新的延迟小于现在的延迟，记录此时的模拟器状态
-				if new_delay < cur_delay:
-					cur_best_in_this_cluster = self._simulator.snapshot()
+				# if new_delay < cur_delay:
+					# cur_best_in_this_cluster = self._simulator.snapshot()
 				# 无论结果如何进行模拟器的状态回滚，准备进行此簇中的下一次尝试
-				self._simulator = simulator_snapshot
+				self._simulator = copy.deepcopy(simulator_snapshot)
 			# 完成一个簇的优化后，更新模拟器的状态，并在此基础上进行下一个簇的优化
 			self._simulator = cur_best_in_this_cluster
 
@@ -179,9 +179,20 @@ class Dispatcher(object):
 		self.machine_slave_dispatch_round_2()
 
 	def stage_2(self):
-		for district in self._simulator.districts.values():
-			for 
-			get_service_spots_num_in_district
+		for district_id in self._simulator.districts.keys():
+			service_id_list = sorted(self._simulator.districts[district_id].service_access_log,
+										key=lambda s: self._simulator.districts[district_id].service_access_log[s],
+										reverse=True)
+			for service_id in service_id_list:
+				# 后面的 minimize_service_delay_in_district 会在循环中修改模拟器的状态，
+				# 为了在一个区域已经优化热门服务的基础上继续优化，需要每次都从当前的模拟器状态出发
+				district = self._simulator.districts[district_id]
+				service = self._simulator.services[service_id]
+				num = self.get_service_spots_num_in_district(service, district)
+				self.init_service_server_in_district(service, district, num)
+				self.dispatch_server_in_district(service, district)
+				self.minimize_service_delay_in_district(service, district)
+
 #####################################################################################################################
 	def find_nearest_slave(self, master, too_busy_slave_list):
 		master_slave_distance_row = self._master_slave_distance_matrix[master.unique_id]
@@ -234,7 +245,7 @@ class Dispatcher(object):
 			requests_to_be_sent_back[r.source.unique_id].append(r)
 			requests_num_groupby_client[r.source.unique_id] += 1
 		unloaded_client_list = []
-		for client_id in sorted(requests_num_groupby_client, key=lambda k: requests_from_machine[k]):
+		for client_id in sorted(requests_num_groupby_client, key=lambda k: requests_num_groupby_client[k]):
 			client = self._simulator.machines[client_id]
 			server.stop_serving_request(requests_to_be_sent_back[client_id])
 			# 伪装user将请求 send back
@@ -252,19 +263,20 @@ class Dispatcher(object):
 
 	def cal_service_delay_in_district(self, service, district):
 		delay = 0
+		distance = 0
 		for client in district.machines:
 			server = client.service_server.get(service.unique_id, None)
 			# get的默认值是None 而 service_server 本身其中的值有可能是None，两者都需要走后台
 			if server and server != client:
-				distance = Dispatcher.machine_mutual_distance(server, client) * \
+				distance += Dispatcher.machine_mutual_distance(server, client) * \
 						len([r for r in server.serving_request if r.source == client])
 			elif server and server == client:
-				distance = self._local_delay * \
+				distance += self._local_delay * \
 						len([r for r in server.serving_request if r.source == "user"])
 			else:
 				# 服务器既不是自己也不是该区域中的其他机器，对于该服务的请求（可能未发送出去或者曾经被退回）只能走后台
-				distance = self._simulator.backend.distance * client.service_access_log[service.unique_id]
-			delay = delay + distance * self._delay_distance_discount
+				distance += self._simulator.backend.distance * client.service_access_log[service.unique_id]
+		delay = delay + distance * self._delay_distance_discount
 		return delay
 
 	@staticmethod

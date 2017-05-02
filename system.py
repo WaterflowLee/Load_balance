@@ -55,6 +55,7 @@ class Machine(CommonObject):
 				receive_single_request(r)
 		else:
 			receive_single_request(request)
+		return self
 
 	# request : Request Object
 	def serve_request(self, request):
