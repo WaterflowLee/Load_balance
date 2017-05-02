@@ -2,10 +2,19 @@
 因为并没有进行服务这个请求。
 
 机器的 serve_request 会将请求从请求队列中取出来，并加入服务中请求列表，并消耗带宽资源。
-
+更新自己的_service_client
+并通过消息通知client更新client自己的_service_server，即告诉client我现在是你的服务器了
 机器的 stop_serving_request 会将请求从服务中请求列表取出， 不增加服务访问日志地将服务再次放进请求队列，并回收带宽资源。
-
+更新自己的_service_client
+并通过消息通知client更新client自己的_service_server，即告诉client我现在不是你的服务器了
 机器的 send_request 会从请求队列中取出请求发送给目标机器, 它不能从服务中请求列表取出请求, 即为了发送请求必须先通过
 stop_serving_request 停止服务且回收带宽资源后发送，发送请求会以减少的模式更新服务访问日志。
 
 因此 服务访问日志体现了当前机器的load负载，包括服务中以及等待服务的请求。
+
+哪些请求是需要走后台的？
+本地没有该服务且没有forward请求到其他的机器
+或者
+forward请求到其他的机器但被服务器由于卸载负载退回的
+
+综上即存在于request_queue中的请求

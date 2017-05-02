@@ -1,7 +1,8 @@
 #!coding:utf-8
 import numpy as np
-np.random.seed(0)
 from collections import defaultdict
+import copy
+np.random.seed(0)
 
 
 class CommonObject(object):
@@ -48,8 +49,6 @@ class Machine(CommonObject):
 		def receive_single_request(r):
 			self._request_queue.append(r)
 			self.service_access_logging(r)
-			if r.source not in self._service_client[r.service.unique_id]:
-				self._service_client[r.service.unique_id].append(r.source)
 
 		if isinstance(request, list):
 			for r in request:
@@ -64,6 +63,13 @@ class Machine(CommonObject):
 			self._cur_bandwidth -= consumed_bandwidth
 			self._request_queue.remove(r)
 			self._serving_request.append(r)
+			if r.source not in self._service_client[r.service.unique_id]:
+				self._service_client[r.service.unique_id].append(r.source)
+				# 如果是非本地请求则通知客户端机器更新自己的_service_server字典
+				if r.source != "user":
+					r.source.set_service_server(r.service, self)
+				else:
+					self.set_service_server(r.service, self)
 
 		if isinstance(request, list):
 			for r in request:
@@ -77,6 +83,14 @@ class Machine(CommonObject):
 			self._serving_request.remove(r)
 			self._request_queue.append(r)
 			self._cur_bandwidth += r.service.consumed_bandwidth
+			if r.source in self._service_client[r.service.unique_id]:
+				self._service_client[r.service.unique_id].remove(r.source)
+				# 如果是非本地请求则通知客户端机器更新自己的_service_server字典
+				# 设置成None是暗示需要走后台
+				if r.source != "user":
+					r.source.set_service_server(r.service, None)
+				else:
+					self.set_service_server(r.service, None)
 
 		if isinstance(request, list):
 			for r in request:
@@ -84,19 +98,20 @@ class Machine(CommonObject):
 		else:
 			stop_serving_single_request(request)
 
-	def send_request(self, request, server):
+	def send_request(self, request, server=None):
 		def send_single_request(r):
 			self._request_queue.remove(r)
 			self.service_access_logging(r, mode=False)
 			if r.source == "user":
 				# send forth
 				r.source = self
-				self.set_service_server(r.service, server)
+				if server:
+					r.machine = server
+				else:
+					raise ValueError("When sending requests forth, the server is needed")
 			else:
 				# send back
-				if r.source in self._service_client[r.service.unique_id]:
-					self._service_client[r.service.unique_id].remove(r.source)
-					r.source.set_service_server(r.service, r.source)
+				r.machine = r.source
 				r.source = "user"
 
 		if isinstance(request, list):
@@ -110,8 +125,12 @@ class Machine(CommonObject):
 		self._service_pool[service.unique_id] = service
 		self._cur_ram -= service.consumed_ram
 		service.deploy(self)
-		self.set_service_server(service, self)
 		return self
+
+	def undeploy_service(self, service):
+		del self._service_pool[service.unique_id]
+		self._cur_ram += service.consumed_ram
+		service.undeploy(self)
 
 	def service_access_logging(self, request, mode=True):
 		if mode:
@@ -178,6 +197,7 @@ class Machine(CommonObject):
 	def service_client(self):
 		return self._service_client
 
+
 class Backend(Machine):
 	def __init__(self):
 		super(Backend, self).__init__(np.inf, np.inf, (np.inf, np.inf))
@@ -223,6 +243,9 @@ class Service(CommonObject):
 	def deploy(self, machine):
 		self._deployment.append(machine)
 
+	def undeploy(self, machine):
+		self._deployment.remove(machine)
+
 
 class Request(CommonObject):
 	# 静态属性(类属性)
@@ -241,6 +264,10 @@ class Request(CommonObject):
 	@property
 	def machine(self):
 		return self._machine
+
+	@machine.setter
+	def machine(self, m):
+		self._machine = m
 
 	@property
 	def service(self):
@@ -339,8 +366,9 @@ class Simulator(object):
 		self._service_num = service_num
 		self._request_num = request_num
 		self._machines = {}
-		self._services = {}
+		self._services = Service.services
 		self._requests = {}
+		self._districts = District.districts
 		self._machine_ram_generator = None
 		self._service_ram_generator = None
 		self._machine_bandwidth_generator = None
@@ -377,7 +405,7 @@ class Simulator(object):
 	def service_factory(self):
 		for _ in range(self._service_num):
 			s = Service(self._service_ram_generator(), self._service_bandwidth_generator())
-			self._services[s.unique_id] = s
+			# self._services[s.unique_id] = s
 		return self
 
 	def request_factory(self):
@@ -392,6 +420,10 @@ class Simulator(object):
 		self.machine_factory()
 		self.service_factory()
 
+	def snapshot(self):
+		simulator_snapshot = copy.deepcopy(self)
+		return simulator_snapshot
+
 	@property
 	def machines(self):
 		return self._machines
@@ -403,6 +435,10 @@ class Simulator(object):
 	@property
 	def requests(self):
 		return self._requests
+
+	@property
+	def districts(self):
+		return self._districts
 
 	@property
 	def machine_average_bandwidth(self):

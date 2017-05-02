@@ -46,3 +46,4 @@ dispatcher.init_service_server_in_district(service, district, 1)
 dispatcher.dispatch_server_in_district(service, district)
 # dispatcher.print_info()
 # print dispatcher._district_machine_dispatch_result[98]
+dispatcher.minimize_service_delay_in_district(service, district)
