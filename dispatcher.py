@@ -3,13 +3,18 @@ from collections import defaultdict
 import numpy as np
 import pprint
 import copy
-import json
 from system import District
+from utility import Logger
+import time
 
-LOG_INTO_JSON_FILE = False
-LOGS = []
-INFOS = {}
-BACKEND_DISTANCE = 1000
+ISO_TIME_FORMAT = "%Y-%m-%d %H-%M-%S"
+Logger.log_filename = time.strftime(ISO_TIME_FORMAT, time.localtime()) + ".json"
+Logger.on_off = False
+logger_1 = Logger("machine_slave_dispatch_round_1")
+logger_2 = Logger("machine_slave_dispatch_round_2")
+logger_3 = Logger("init_service_server_in_district")
+logger_4 = Logger("dispatch_server_in_district")
+logger_5 = Logger("minimize_service_delay_in_district")
 
 
 class Dispatcher(object):
@@ -46,19 +51,13 @@ class Dispatcher(object):
 				if idlest_district.load + slave.load < District.average_load():
 					idlest_district.add_slave(slave)
 					too_busy_slave_list = []
-					if LOG_INTO_JSON_FILE:
-						LOGS.append({"machine_load_district_dist": copy.deepcopy(self._machine_load_district_dist),
-								"machine_district_dispatch_result": copy.deepcopy(self._district_machine_dispatch_result)})
+					logger_1.log(idlest_district.serialize())
 				else:
 					too_busy_slave_list.append(slave.unique_id)
 			else:
 				print "District %s can not be dispatched anymore" % idlest_district.unique_id
 				idlest_district.expandable = False
 				too_busy_slave_list = []
-		if LOG_INTO_JSON_FILE:
-			INFOS["position"] = dict([(m.unique_id, m.position) for m in self._simulator.machines.values()])
-			INFOS["load"] = self._machine_load_rank
-			json.dump({"LOGS": LOGS, "INFOS": INFOS}, open("round_1.json", "w"))
 		print "Finish Round 1 Dispatching"
 		return self
 
@@ -69,6 +68,7 @@ class Dispatcher(object):
 			# self._machine_load_district_dist[district_id] += slave.load
 			# self._district_machine_dispatch_result[district_id].append(slave_id)
 			district.add_slave(slave)
+			logger_2.log(district.serialize())
 		print "Finish Round 2 Dispatching"
 		return self
 
@@ -92,9 +92,7 @@ class Dispatcher(object):
 				cur_spots_num += 1
 				request_from_user_list = [r for r in machine.request_queue if r.source == "user" and r.service.unique_id == service.unique_id]
 				machine.deploy_service(service).receive_request(request_from_user_list).serve_request(request_from_user_list)
-				# self._district_service_dispatch_result[district_id][service_id].append(machine_id)
-				# 上面这一语句被简化掉，是因为上面部署服务的时候机器、服务、机器内含区域信息综合替代了调度器
-				# 维护的这一个字典
+				logger_3.log(map(lambda m: m.serialize(), self._simulator.machines.values()))
 			else:
 				pass
 				# 可以使用伪用户请求处理incomplete TODO
@@ -113,6 +111,8 @@ class Dispatcher(object):
 					client.send_request(requests_to_be_sent_forth, server)
 					server.receive_request(requests_to_be_sent_forth)
 					server.serve_request(requests_to_be_sent_forth)
+					logger_4.log(map(lambda m: m.serialize(), self._simulator.machines.values()))
+
 				else:
 					print "for client machine %s can not find a server" % client.unique_id
 		for machine in district.machines:
@@ -166,12 +166,13 @@ class Dispatcher(object):
 				new_delay = self.cal_service_delay_in_district(self._simulator.services[service_id],
 																self._simulator.districts[district_id])
 				# 如果新的延迟小于现在的延迟，记录此时的模拟器状态
-				# if new_delay < cur_delay:
-					# cur_best_in_this_cluster = self._simulator.snapshot()
+				if new_delay < cur_delay:
+					cur_best_in_this_cluster = self._simulator.snapshot()
 				# 无论结果如何进行模拟器的状态回滚，准备进行此簇中的下一次尝试
 				self._simulator = copy.deepcopy(simulator_snapshot)
 			# 完成一个簇的优化后，更新模拟器的状态，并在此基础上进行下一个簇的优化
 			self._simulator = cur_best_in_this_cluster
+			logger_5.log(map(lambda m: m.serialize(), self._simulator.machines.values()))
 
 	def stage_1(self):
 		self.machine_slave_dispatch_round_0()
@@ -191,7 +192,8 @@ class Dispatcher(object):
 				num = self.get_service_spots_num_in_district(service, district)
 				self.init_service_server_in_district(service, district, num)
 				self.dispatch_server_in_district(service, district)
-				self.minimize_service_delay_in_district(service, district)
+				# self.minimize_service_delay_in_district(service, district)
+		Logger.persist()
 
 #####################################################################################################################
 	def find_nearest_slave(self, master, too_busy_slave_list):

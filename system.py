@@ -198,11 +198,35 @@ class Machine(CommonObject):
 	def service_client(self):
 		return self._service_client
 
+	def serialize(self):
+		serialized_service_access_log = dict(self._service_access_log.items())
+		serialized_service_pool = self._service_pool.keys()
+		serialized_service_server = [{service: getattr(server, "unique_id", None)} for service, server in self._service_server.items()]
+		serialized_service_client = [{service: map(lambda c: getattr(c, "unique_id", "user"), clients)}
+											for service, clients in self._service_client.items()]
+		return {"ram": self._ram,
+						"bandwidth": self._bandwidth,
+						"cur_ram": self._cur_ram,
+						"cur_bandwidth": self._cur_bandwidth,
+						"unique_id": self.unique_id,
+						"service_access_log": serialized_service_access_log,
+						"service_pool": serialized_service_pool,
+						"service_server": serialized_service_server,
+						"service_client": serialized_service_client,
+						"position": self._position,
+						"distinct": getattr(self._district, "unique_id", None)
+				}
+
 
 class Backend(Machine):
 	def __init__(self):
 		super(Backend, self).__init__(np.inf, np.inf, (np.inf, np.inf))
 		self._distance = None
+		# 此处为特殊设置，Backend的实例化会增加Machine的类属性static_unique_id，因此在此处通过实例访问类属性并修改的方式去掉这个影响
+		# 虽然这样的设计实在诡异，但是就这样吧
+		# fatal error 上面提及的方式存在覆盖，因此并不起作用
+		# self.static_unique_id -= 1
+		Machine.static_unique_id -= 1
 
 	@property
 	def distance(self):
@@ -356,6 +380,12 @@ class District(CommonObject):
 			for service in machine.service_pool.values():
 				service_deploy_log[service.unique_id].append(machine)
 		return service_deploy_log
+
+	def serialize(self):
+		return {"unique_id": self.unique_id,
+				"master": self._master.serialize(),
+				"slaves": [s.serialize() for s in self._slaves]
+				}
 
 
 class Simulator(object):

@@ -33,8 +33,6 @@ request_generator = request_generator_factory(machine_id_list, service_id_list)
 sim.request_generator(request_generator).request_factory()
 
 
-print sim.services
-
 dispatcher = Dispatcher(sim, 10, 300)
 dispatcher.stage_1()
 dispatcher.stage_2()
