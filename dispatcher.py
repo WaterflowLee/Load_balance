@@ -162,7 +162,7 @@ class Dispatcher(object):
 				next_generation_server.serve_request([r for r in next_generation_server.request_queue
 														if r.service.unique_id == service_id])
 				if next_generation_server.cur_bandwidth < 0:
-					Dispatcher.unload_overload_server(next_generation_server, self._simulator.services[service_id])
+					self.unload_overload_server(next_generation_server, self._simulator.services[service_id])
 				new_delay = self.cal_service_delay_in_district(self._simulator.services[service_id],
 																self._simulator.districts[district_id])
 				# 如果新的延迟小于现在的延迟，记录此时的模拟器状态
