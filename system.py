@@ -42,6 +42,7 @@ class Machine(CommonObject):
 		self._service_access_log = defaultdict(int)
 		self._service_server = {}
 		self._service_client = defaultdict(list)
+		self._simulator = None
 		Machine.static_unique_id += 1
 
 	# request : Request Object
@@ -142,6 +143,50 @@ class Machine(CommonObject):
 	def set_service_server(self, service, server):
 		self._service_server[service.unique_id] = server
 
+	def startup(self):
+		for request in self._request_queue:
+			service = request.service
+			if service.unique_id in self._service_pool.keys() and service.consumed_bandwidth < self._cur_bandwidth:
+				self.serve_request(request)
+				request.delay = self._simulator.local_delay
+
+	def find_nearest_machine(self, request, district_mode):
+		service = request.service
+		distance_row = self._simulator.distance_matrix[self.unique_id]
+		if district_mode:
+			filtered_distance_row = {}
+			district_machine_ids = map(lambda m: m.unique_id, self._district.machines)
+			for m_id, distance in distance_row.items():
+				if m_id in district_machine_ids:
+					filtered_distance_row[m_id] = distance
+		else:
+			filtered_distance_row = distance_row
+		distance_rank = sorted(filtered_distance_row, key=lambda k: filtered_distance_row[k], reverse=False)
+		for machine_id in distance_rank:
+			server = self._simulator.machines[machine_id]
+			if service.unique_id in server.service_pool.keys() and service.consumed_bandwidth < server.cur_bandwidth:
+				if filtered_distance_row[machine_id] < self._simulator.backend.distance:
+					self.send_request(request, server)
+					request.delay = self._simulator.local_delay + filtered_distance_row[machine_id] * self._simulator.delay_distance_discount
+					server.receive_request(request)
+					server.serve_request(request)
+				else:
+					self.send_request(request, self._simulator.backend)
+					request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
+					self._simulator.backend.receive_request(request)
+					self._simulator.backend.serve_request(request)
+				return True
+		return False
+
+	def ask_for_help(self, district_mode=False):
+		for request in self._request_queue:
+			ret = self.find_nearest_machine(request, district_mode)
+			if not ret:
+				self.send_request(request, self._simulator.backend)
+				request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
+				self._simulator.backend.receive_request(request)
+				self._simulator.backend.serve_request(request)
+
 	@property
 	def district(self):
 		return self._district
@@ -217,6 +262,14 @@ class Machine(CommonObject):
 						"distinct": getattr(self._district, "unique_id", None)
 				}
 
+	@property
+	def simulator(self):
+		return self._simulator
+
+	@simulator.setter
+	def simulator(self, sim):
+		self._simulator = sim
+
 
 class Backend(Machine):
 	def __init__(self):
@@ -240,6 +293,7 @@ class Backend(Machine):
 class Service(CommonObject):
 	static_unique_id = 0
 	services = {}
+	test_1 = []
 
 	@classmethod
 	def get_service_by_id(cls, unique_id):
@@ -285,7 +339,7 @@ class Request(CommonObject):
 		self._service = service
 		self._source = source
 		Request.static_unique_id += 1
-
+		self._delay = 0
 	@property
 	def machine(self):
 		return self._machine
@@ -306,12 +360,21 @@ class Request(CommonObject):
 	def source(self, s):
 		self._source = s
 
+	@property
+	def delay(self):
+		return self._delay
+
+	@delay.setter
+	def delay(self, d):
+		self._delay = d
+
 
 class District(CommonObject):
 	# 用类属性保证区域的唯一性
 	# 让类本身来管理自己的实例
 	districts = {}
 	max_radius = 0
+	test_2 = []
 
 	# 类方法 而不是静态方法
 	@classmethod
@@ -389,23 +452,28 @@ class District(CommonObject):
 
 
 class Simulator(object):
-	def __init__(self, machine_num, service_num, request_num, distance):
+	def __init__(self, machine_num, service_num, request_num, distance, delay_distance_discount=0.5, local_delay=20):
 		super(Simulator, self).__init__()
 		self._backend = Backend()
 		self._backend.distance = distance
 		self._machine_num = machine_num
 		self._service_num = service_num
 		self._request_num = request_num
+		self._delay_distance_discount = delay_distance_discount
+		self._local_delay = local_delay
 		self._machines = {}
 		self._services = Service.services
 		self._requests = {}
 		self._districts = District.districts
+		self._distance_matrix = defaultdict(dict)
 		self._machine_ram_generator = None
 		self._service_ram_generator = None
 		self._machine_bandwidth_generator = None
 		self._service_bandwidth_generator = None
 		self._request_generator = None
 		self._position_generator = None
+		self._test_1 = Service.test_1
+		self._test_2 = District.test_2
 
 	def ram_generator(self, generators):
 		self._machine_ram_generator = generators[0]
@@ -430,6 +498,7 @@ class Simulator(object):
 	def machine_factory(self):
 		for _ in range(self._machine_num):
 			m = Machine(self._machine_ram_generator(), self._machine_bandwidth_generator(), self._position_generator())
+			m.simulator = self
 			self._machines[m.unique_id] = m
 		return self
 
@@ -450,10 +519,24 @@ class Simulator(object):
 	def active(self):
 		self.machine_factory()
 		self.service_factory()
+		self.cal_distance_matrix()
+		District.test_2.append("jack in active")
+		Service.test_1.append("jones in active")
+		return self
 
 	def snapshot(self):
 		simulator_snapshot = copy.deepcopy(self)
 		return simulator_snapshot
+
+	def cal_distance_matrix(self):
+		for machine_1 in self._machines.values():
+			for machine_2 in self._machines.values():
+				self._distance_matrix[machine_1.unique_id][machine_2.unique_id] = \
+					Simulator.machine_mutual_distance(machine_1, machine_2)
+
+	@staticmethod
+	def machine_mutual_distance(m_1, m_2):
+		return np.sqrt((m_1.position[0] - m_2.position[0]) ** 2 + (m_1.position[1] - m_2.position[1]) ** 2)
 
 	@property
 	def machines(self):
@@ -485,6 +568,22 @@ class Simulator(object):
 	@backend.setter
 	def backend(self, backend_machine):
 		self._backend = backend_machine
+
+	@property
+	def machine_num(self):
+		return self._machine_num
+
+	@property
+	def distance_matrix(self):
+		return self._distance_matrix
+
+	@property
+	def local_delay(self):
+		return self._local_delay
+
+	@property
+	def delay_distance_discount(self):
+		return self._delay_distance_discount
 
 
 def ram_generator_factory(lower, upper, generator_type="uniform_distribution"):

@@ -1,9 +1,12 @@
 #!coding:utf-8
 from system import ram_generator_factory,\
 	bandwidth_generator_factory, request_generator_factory, position_generator_factory, Simulator
+from random_dispatcher import RandomDispatcher
+from naive_dispatcher import NaiveDispatcher
 from dispatcher import Dispatcher
-from system import District, Service, Machine
 import numpy as np
+import copy
+
 
 machine_num = 100
 service_num = 20
@@ -18,13 +21,12 @@ service_bandwidth_generator = bandwidth_generator_factory(10, 10*2)
 
 position_generator = position_generator_factory((0, 1000), (0, 1000))
 
-# chain rule
 sim.ram_generator([machine_ram_generator, service_ram_generator])\
 	.bandwidth_generator([machine_bandwidth_generator, service_bandwidth_generator])\
 	.position_generator(position_generator)
 
-# sim.active() 等价于 sim.machine_factory().service_factory()
-sim.machine_factory().service_factory()
+# sim.machine_factory().service_factory().cal_distance_matrix()
+sim.active().cal_distance_matrix()
 
 service_id_list = sim.services.keys()
 machine_id_list = sim.machines.keys()
@@ -32,17 +34,17 @@ request_generator = request_generator_factory(machine_id_list, service_id_list)
 
 sim.request_generator(request_generator).request_factory()
 
+random_dispatcher = RandomDispatcher(copy.deepcopy(sim))
+random_dispatcher.service_deploy()
+random_dispatcher.dispatch()
+random_dispatcher.delay_sum()
 
-dispatcher = Dispatcher(sim, 10, 300)
+naive_dispatcher = NaiveDispatcher(copy.deepcopy(sim))
+naive_dispatcher.service_deploy()
+naive_dispatcher.dispatch()
+naive_dispatcher.delay_sum()
+
+# 代码结构限制使得这个调度器的sim不能使用拷贝
+dispatcher = Dispatcher(sim, 20, 100)
 dispatcher.stage_1()
 dispatcher.stage_2()
-
-# district = District.districts.values()[0]
-# service_id = district.service_access_log.keys()[0]
-# service = Service.get_service_by_id(service_id)
-# print dispatcher.get_service_spots_num_in_district(service, district)
-# dispatcher.init_service_server_in_district(service, district, 1)
-# dispatcher.dispatch_server_in_district(service, district)
-# # dispatcher.print_info()
-# # print dispatcher._district_machine_dispatch_result[98]
-# dispatcher.minimize_service_delay_in_district(service, district)

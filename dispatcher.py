@@ -1,9 +1,8 @@
 #!coding:utf-8
 from collections import defaultdict
 import numpy as np
-import pprint
 import copy
-from system import District
+from system import District, Service
 from utility import Logger
 import time
 
@@ -27,16 +26,14 @@ class Dispatcher(object):
 		self._local_delay = local_delay
 
 		self._machine_load_rank = None  # list of id in load's desc order
-		self._master_slave_distance_matrix = {}
-		self._incomplete_dispatch = defaultdict(list)
-
 		self.machine_load_rank()
 
 	def machine_slave_dispatch_round_0(self):
 		for master_id in self._machine_load_rank[:self._machine_master_num]:
 			master = self._simulator.machines[master_id]
 			District(master)
-		self.master_slave_distance_matrix()
+		District.test_2.append("Jack")
+		Service.test_1.append("Jones")
 		print "Finish Round 0 Dispatching"
 		return self
 
@@ -46,7 +43,7 @@ class Dispatcher(object):
 				and len([district for district in District.districts.values() if district.expandable]):
 			idlest_district = Dispatcher.find_idlest_district()
 			slave = self.find_nearest_slave(idlest_district.master, too_busy_slave_list)
-			distance = self._master_slave_distance_matrix[idlest_district.master.unique_id][slave.unique_id]
+			distance = self._simulator.distance_matrix[idlest_district.master.unique_id][slave.unique_id]
 			if slave and distance < District.max_radius:
 				if idlest_district.load + slave.load < District.average_load():
 					idlest_district.add_slave(slave)
@@ -55,7 +52,7 @@ class Dispatcher(object):
 				else:
 					too_busy_slave_list.append(slave.unique_id)
 			else:
-				print "District %s can not be dispatched anymore" % idlest_district.unique_id
+				# print "District %s can not be dispatched anymore" % idlest_district.unique_id
 				idlest_district.expandable = False
 				too_busy_slave_list = []
 		print "Finish Round 1 Dispatching"
@@ -65,8 +62,6 @@ class Dispatcher(object):
 		for slave in [machine for machine in self._simulator.machines.values() if not machine.district]:
 			master = self.find_nearest_master(slave)
 			district = District.districts[master.unique_id]
-			# self._machine_load_district_dist[district_id] += slave.load
-			# self._district_machine_dispatch_result[district_id].append(slave_id)
 			district.add_slave(slave)
 			logger_2.log(district.serialize())
 		print "Finish Round 2 Dispatching"
@@ -74,30 +69,18 @@ class Dispatcher(object):
 
 	# 该函数执行完毕后, 会将服务部署到该区域中对该服务请求最多的 spots_num 个机器上
 	def init_service_server_in_district(self, service, district, spots_num):
-		machines_in_district = district.machines
-		machines_in_district_get_request_for_this_service = []
-		for machine in machines_in_district:
-			# 这个服务不一定部署了，不能从服务池中看
-			if service.unique_id in machine.service_access_log.keys():
-				machines_in_district_get_request_for_this_service.append(machine)
-		hot_machines_for_this_service = sorted(machines_in_district_get_request_for_this_service, key=lambda m: m.load,
-											reverse=True)
+		service_access = {}
+		for machine in district.machines:
+			service_access[machine.unique_id] = machine.service_access_log.get(service.unique_id, 0)
+		hot_machine_id_for_this_service = sorted(service_access, key=lambda k: service_access[k], reverse=True)
 		cur_spots_num = 0
-		# 只考虑本机的访问量
-		for machine in hot_machines_for_this_service:
-			if cur_spots_num > spots_num - 1:
-				break
-			consumed_bandwidth = service.consumed_bandwidth * machine.service_access_log[service.unique_id]
-			if machine.cur_bandwidth > consumed_bandwidth:
+		for machine_id in hot_machine_id_for_this_service:
+			machine = self._simulator.machines[machine_id]
+			if machine.cur_ram > service.consumed_ram:
 				cur_spots_num += 1
-				request_from_user_list = [r for r in machine.request_queue if r.source == "user" and r.service.unique_id == service.unique_id]
-				machine.deploy_service(service).receive_request(request_from_user_list).serve_request(request_from_user_list)
-				logger_3.log(map(lambda m: m.serialize(), self._simulator.machines.values()))
-			else:
-				pass
-				# 可以使用伪用户请求处理incomplete TODO
-		if cur_spots_num < spots_num - 1:
-			self._incomplete_dispatch[district.unique_id].append(service.unique_id)
+				machine.deploy_service(service)
+			if cur_spots_num >= spots_num:
+				break
 
 	def dispatch_server_in_district(self, service, district):
 		for client in district.machines:
@@ -191,14 +174,24 @@ class Dispatcher(object):
 				service = self._simulator.services[service_id]
 				num = self.get_service_spots_num_in_district(service, district)
 				self.init_service_server_in_district(service, district, num)
-				self.dispatch_server_in_district(service, district)
+				# self.dispatch_server_in_district(service, district)
 				# self.minimize_service_delay_in_district(service, district)
-		Logger.persist()
+		for machine in self._simulator.machines.values():
+			machine.startup()
+		for machine in self._simulator.machines.values():
+			machine.ask_for_help(district_mode=False)
+		self.delay_sum()
+
+	def delay_sum(self):
+		delay_sum = 0
+		for r in self._simulator.requests.values():
+			delay_sum += r.delay
+		print "Sum of delay is %s" % delay_sum
 
 #####################################################################################################################
 	def find_nearest_slave(self, master, too_busy_slave_list):
-		master_slave_distance_row = self._master_slave_distance_matrix[master.unique_id]
-		can_be_dispatched_slave = [d for d in master_slave_distance_row.iteritems()
+		distance_row = self._simulator.distance_matrix[master.unique_id]
+		can_be_dispatched_slave = [d for d in distance_row.iteritems()
 											if not self._simulator.machines[d[0]].district and d[0] not in too_busy_slave_list]
 		try:
 			slave_id, distance = min(can_be_dispatched_slave, key=lambda dd: dd[1])
@@ -208,7 +201,9 @@ class Dispatcher(object):
 		return slave
 
 	def find_nearest_master(self, slave):
-		master_slave_distance_column = [(d[0], d[1][slave.unique_id]) for d in self._master_slave_distance_matrix.iteritems()]
+		master_ids = District.districts.keys()
+		master_slave_distance_column = [(d[0], d[1][slave.unique_id]) for d in self._simulator.distance_matrix.iteritems()
+											if d[0] in master_ids]
 		try:
 			master_id, distance = min(master_slave_distance_column, key=lambda dd: dd[1])
 			master = self._simulator.machines[master_id]
@@ -226,11 +221,11 @@ class Dispatcher(object):
 
 	def master_slave_distance_matrix(self):
 		for master_id in self._machine_load_rank[:self._machine_master_num]:
-			self._master_slave_distance_matrix[master_id] = {}
+			self._simulator.distance_matrix[master_id] = {}
 			for slave_id in self._machine_load_rank[self._machine_master_num:]:
 				master = self._simulator.machines[master_id]
 				slave = self._simulator.machines[slave_id]
-				self._master_slave_distance_matrix[master_id][slave_id] = Dispatcher.machine_mutual_distance(master, slave)
+				self._simulator.distance_matrix[master_id][slave_id] = Dispatcher.machine_mutual_distance(master, slave)
 
 	def get_service_spots_num_in_district(self, service, district):
 		access_num = district.service_access_log[service.unique_id]
@@ -303,10 +298,3 @@ class Dispatcher(object):
 				if server.cur_bandwidth > 0:
 					return server
 			return None
-
-	def print_info(self):
-		for attr in dir(self):
-			if attr[0] == "_" and attr[-1] != "_" and attr != "_master_slave_distance_matrix":
-				print attr + ":"
-				pprint.pprint(self.__getattribute__(attr))
-				print "\n"
