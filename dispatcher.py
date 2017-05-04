@@ -91,8 +91,8 @@ class Dispatcher(object):
 			if machine.cur_bandwidth > consumed_bandwidth:
 				cur_spots_num += 1
 				request_from_user_list = [r for r in machine.request_queue if r.source == "user" and r.service.unique_id == service.unique_id]
-				machine.deploy_service(service).receive_request(request_from_user_list).serve_request(request_from_user_list)
 				logger_3.log(map(lambda m: m.serialize(), self._simulator.machines.values()))
+				machine.deploy_service(service).receive_request(request_from_user_list).serve_request(request_from_user_list)
 			else:
 				pass
 				# 可以使用伪用户请求处理incomplete TODO
