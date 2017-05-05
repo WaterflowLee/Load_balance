@@ -2,7 +2,7 @@
 import numpy as np
 from collections import defaultdict
 import copy
-np.random.seed(0)
+np.random.seed(100)
 
 
 class CommonObject(object):
@@ -38,6 +38,7 @@ class Machine(CommonObject):
 		self._cur_bandwidth = bandwidth
 		self._request_queue = []
 		self._serving_request = []
+		self._sent_out_request = []
 		self._service_pool = {}
 		self._service_access_log = defaultdict(int)
 		self._service_server = {}
@@ -103,6 +104,7 @@ class Machine(CommonObject):
 	def send_request(self, request, server=None):
 		def send_single_request(r):
 			self._request_queue.remove(r)
+			self._sent_out_request.append(r)
 			self.service_access_logging(r, mode=False)
 			if r.source == "user":
 				# send forth
@@ -143,12 +145,13 @@ class Machine(CommonObject):
 	def set_service_server(self, service, server):
 		self._service_server[service.unique_id] = server
 
-	def startup(self):
+	def startup(self, service_id=None):
 		for request in self._request_queue:
-			service = request.service
-			if service.unique_id in self._service_pool.keys() and service.consumed_bandwidth < self._cur_bandwidth:
-				self.serve_request(request)
-				request.delay = self._simulator.local_delay
+			if service_id is None or request.service.unique_id == service_id:
+				service = request.service
+				if service.unique_id in self._service_pool.keys() and service.consumed_bandwidth < self._cur_bandwidth:
+					self.serve_request(request)
+					request.delay = self._simulator.local_delay
 
 	def find_nearest_machine(self, request, district_mode):
 		service = request.service
@@ -178,14 +181,15 @@ class Machine(CommonObject):
 				return True
 		return False
 
-	def ask_for_help(self, district_mode=False):
+	def ask_for_help(self, district_mode=False, service_id=None):
 		for request in self._request_queue:
-			ret = self.find_nearest_machine(request, district_mode)
-			if not ret:
-				self.send_request(request, self._simulator.backend)
-				request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
-				self._simulator.backend.receive_request(request)
-				self._simulator.backend.serve_request(request)
+			if service_id is None or request.service.unique_id == service_id:
+				ret = self.find_nearest_machine(request, district_mode)
+				if not ret:
+					self.send_request(request, self._simulator.backend)
+					request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
+					self._simulator.backend.receive_request(request)
+					self._simulator.backend.serve_request(request)
 
 	@property
 	def district(self):
@@ -222,6 +226,10 @@ class Machine(CommonObject):
 	@property
 	def serving_request(self):
 		return self._serving_request
+
+	@property
+	def sent_out_request(self):
+		return self._sent_out_request
 
 	@property
 	def load(self):

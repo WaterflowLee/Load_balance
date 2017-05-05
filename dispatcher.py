@@ -5,6 +5,7 @@ import copy
 from system import District, Service
 from utility import Logger
 import time
+import itertools
 
 ISO_TIME_FORMAT = "%Y-%m-%d %H-%M-%S"
 Logger.log_filename = time.strftime(ISO_TIME_FORMAT, time.localtime()) + ".json"
@@ -67,20 +68,62 @@ class Dispatcher(object):
 		print "Finish Round 2 Dispatching"
 		return self
 
-	# 该函数执行完毕后, 会将服务部署到该区域中对该服务请求最多的 spots_num 个机器上
-	def init_service_server_in_district(self, service, district, spots_num):
+	@staticmethod
+	def init_service_server_in_district(sim, service, district, spots_num):
 		service_access = {}
 		for machine in district.machines:
 			service_access[machine.unique_id] = machine.service_access_log.get(service.unique_id, 0)
 		hot_machine_id_for_this_service = sorted(service_access, key=lambda k: service_access[k], reverse=True)
 		cur_spots_num = 0
 		for machine_id in hot_machine_id_for_this_service:
-			machine = self._simulator.machines[machine_id]
+			machine = sim.machines[machine_id]
 			if machine.cur_ram > service.consumed_ram:
 				cur_spots_num += 1
 				machine.deploy_service(service)
 			if cur_spots_num >= spots_num:
 				break
+
+	def combination(self, sim_prev, service_id, district_id, spots_num):
+		# cur_delay_sum = np.inf
+		# cur_sim = sim_prev
+		flag = False
+		machine_ids = [m.unique_id for m in sim_prev.districts[district_id].machines]
+		# for machine_ids_part in itertools.combinations(machine_ids, spots_num):
+		# 	for machine_id in machine_ids_part:
+		# 		sim = copy.deepcopy(self._simulator)
+		# 		machine = sim.machines[machine_id]
+		# 		service = sim.services[service_id]
+		# 		if machine.cur_ram > service.consumed_ram:
+		# 			machine.deploy_service(service)
+		# 		all_requests_in_district = [r for machine_id in machine_ids for r in sim.machines[machine_id].request_queue
+		# 											if r.service.unique_id == service_id]
+		# 		for machine in sim.districts[district_id].machines:
+		# 			machine.startup(service_id=service_id)
+		# 		for machine in sim.districts[district_id].machines:
+		# 			machine.ask_for_help(district_mode=True, service_id=service_id)
+		# 		new_delay = Dispatcher.delay_sum(all_requests_in_district)
+		# 		print "delay for new dispatch plan: %s" % new_delay
+		# 		if new_delay < cur_delay_sum:
+		# 			cur_delay_sum = new_delay
+		# 			cur_sim = sim
+		# 		flag = True
+		# cur_sim = copy.deepcopy(sim_prev)
+		cur_sim = sim_prev
+		if not flag:
+			service = cur_sim.services[service_id]
+			district = cur_sim.districts[district_id]
+			all_requests_in_district = [r for machine_id in machine_ids for r in cur_sim.machines[machine_id].request_queue
+											if r.service.unique_id == service_id]
+			Dispatcher.init_service_server_in_district(cur_sim, service, district, spots_num)
+			# for machine in cur_sim.districts[district_id].machines:
+			# 	machine.startup(service_id=service_id)
+			# for machine in cur_sim.districts[district_id].machines:
+			# 	machine.ask_for_help(district_mode=True, service_id=service_id)
+			# cur_delay_sum = Dispatcher.delay_sum(all_requests_in_district)
+		# sim_prev = cur_sim
+		# self._simulator = cur_sim
+		# print "Best delay in  district %s for service %s : %s" % (district_id, service_id, cur_delay_sum)
+		# print
 
 	def dispatch_server_in_district(self, service, district):
 		for client in district.machines:
@@ -163,30 +206,48 @@ class Dispatcher(object):
 		self.machine_slave_dispatch_round_2()
 
 	def stage_2(self):
-		for district_id in self._simulator.districts.keys():
-			service_id_list = sorted(self._simulator.districts[district_id].service_access_log,
-										key=lambda s: self._simulator.districts[district_id].service_access_log[s],
-										reverse=True)
+		district_ids = self._simulator.districts.keys()
+		for district_id in district_ids:
+			service_access_log = self._simulator.districts[district_id].service_access_log
+			service_id_list = sorted(service_access_log, key=lambda s: service_access_log[s], reverse=True)
 			for service_id in service_id_list:
-				# 后面的 minimize_service_delay_in_district 会在循环中修改模拟器的状态，
-				# 为了在一个区域已经优化热门服务的基础上继续优化，需要每次都从当前的模拟器状态出发
 				district = self._simulator.districts[district_id]
 				service = self._simulator.services[service_id]
 				num = self.get_service_spots_num_in_district(service, district)
-				self.init_service_server_in_district(service, district, num)
+				Dispatcher.init_service_server_in_district(self._simulator, service, district, num)
 				# self.dispatch_server_in_district(service, district)
 				# self.minimize_service_delay_in_district(service, district)
 		for machine in self._simulator.machines.values():
 			machine.startup()
 		for machine in self._simulator.machines.values():
-			machine.ask_for_help(district_mode=False)
-		self.delay_sum()
+			machine.ask_for_help(district_mode=True)
+		print "Sum of delay is %s" % Dispatcher.delay_sum(self._simulator.requests.values())
 
-	def delay_sum(self):
+	def stage_2_ergodic(self):
+		district_ids = self._simulator.districts.keys()
+		for district_id in district_ids:
+			service_access_log = self._simulator.districts[district_id].service_access_log
+			service_id_list = sorted(service_access_log, key=lambda s: service_access_log[s], reverse=True)
+			for service_id in service_id_list:
+				district = self._simulator.districts[district_id]
+				service = self._simulator.services[service_id]
+				num = self.get_service_spots_num_in_district(service, district)
+				self.combination(self._simulator, service_id, district_id, num)
+
+		# requests = [r for m in self._simulator.machines.values() for r in m.serving_request]
+		# requests += self._simulator.backend.serving_request
+		for machine in self._simulator.machines.values():
+			machine.startup()
+		for machine in self._simulator.machines.values():
+			machine.ask_for_help(district_mode=True)
+		print "Sum of delay is %s" % Dispatcher.delay_sum(self._simulator.requests.values())
+
+	@staticmethod
+	def delay_sum(requests):
 		delay_sum = 0
-		for r in self._simulator.requests.values():
+		for r in requests:
 			delay_sum += r.delay
-		print "Sum of delay is %s" % delay_sum
+		return delay_sum
 
 #####################################################################################################################
 	def find_nearest_slave(self, master, too_busy_slave_list):

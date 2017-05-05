@@ -1,7 +1,7 @@
 from collections import defaultdict
 # from functools import partial
 import numpy as np
-np.random.seed(0)
+np.random.seed(10)
 
 
 # def saiyanize_machine(machine):
