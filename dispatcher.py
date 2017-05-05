@@ -83,47 +83,35 @@ class Dispatcher(object):
 			if cur_spots_num >= spots_num:
 				break
 
-	def combination(self, sim_prev, service_id, district_id, spots_num):
-		# cur_delay_sum = np.inf
-		# cur_sim = sim_prev
-		flag = False
-		machine_ids = [m.unique_id for m in sim_prev.districts[district_id].machines]
-		# for machine_ids_part in itertools.combinations(machine_ids, spots_num):
-		# 	for machine_id in machine_ids_part:
-		# 		sim = copy.deepcopy(self._simulator)
-		# 		machine = sim.machines[machine_id]
-		# 		service = sim.services[service_id]
-		# 		if machine.cur_ram > service.consumed_ram:
-		# 			machine.deploy_service(service)
-		# 		all_requests_in_district = [r for machine_id in machine_ids for r in sim.machines[machine_id].request_queue
-		# 											if r.service.unique_id == service_id]
-		# 		for machine in sim.districts[district_id].machines:
-		# 			machine.startup(service_id=service_id)
-		# 		for machine in sim.districts[district_id].machines:
-		# 			machine.ask_for_help(district_mode=True, service_id=service_id)
-		# 		new_delay = Dispatcher.delay_sum(all_requests_in_district)
-		# 		print "delay for new dispatch plan: %s" % new_delay
-		# 		if new_delay < cur_delay_sum:
-		# 			cur_delay_sum = new_delay
-		# 			cur_sim = sim
-		# 		flag = True
-		# cur_sim = copy.deepcopy(sim_prev)
-		cur_sim = sim_prev
-		if not flag:
-			service = cur_sim.services[service_id]
-			district = cur_sim.districts[district_id]
-			all_requests_in_district = [r for machine_id in machine_ids for r in cur_sim.machines[machine_id].request_queue
-											if r.service.unique_id == service_id]
-			Dispatcher.init_service_server_in_district(cur_sim, service, district, spots_num)
-			# for machine in cur_sim.districts[district_id].machines:
-			# 	machine.startup(service_id=service_id)
-			# for machine in cur_sim.districts[district_id].machines:
-			# 	machine.ask_for_help(district_mode=True, service_id=service_id)
-			# cur_delay_sum = Dispatcher.delay_sum(all_requests_in_district)
-		# sim_prev = cur_sim
-		# self._simulator = cur_sim
-		# print "Best delay in  district %s for service %s : %s" % (district_id, service_id, cur_delay_sum)
-		# print
+	def combination(self, service, district, spots_num):
+		cur_delay_sum = np.inf
+		cur_deployment = None
+		for machines_part in itertools.combinations(district.machines, spots_num):
+			deployment = []
+			for machine in machines_part:
+				if machine.cur_ram > service.consumed_ram:
+					deployment.append(machine)
+					machine.deploy_service(service)
+			all_requests_in_district = [r for machine in district.machines for r in machine.request_queue
+													if r.service.unique_id == service.unique_id]
+			for server in district.machines:
+					server.startup(service_id=service.unique_id, test=True)
+			for client in district.machines:
+					client.ask_for_help(district_mode=True, service_id=service.unique_id, test=True)
+			new_delay = Dispatcher.delay_sum(all_requests_in_district)
+			print "delay for new dispatch plan: %s" % new_delay
+			if new_delay < cur_delay_sum:
+					cur_deployment = deployment
+					cur_delay_sum = new_delay
+			for machine in deployment:
+				machine.undeploy_service(service)
+			for r in all_requests_in_district:
+				r.delay = 0
+		if cur_deployment is not None:
+			for machine in cur_deployment:
+				machine.deploy_service(service)
+		else:
+			Dispatcher.init_service_server_in_district(self._simulator, service, district, spots_num)
 
 	def dispatch_server_in_district(self, service, district):
 		for client in district.machines:
@@ -215,8 +203,6 @@ class Dispatcher(object):
 				service = self._simulator.services[service_id]
 				num = self.get_service_spots_num_in_district(service, district)
 				Dispatcher.init_service_server_in_district(self._simulator, service, district, num)
-				# self.dispatch_server_in_district(service, district)
-				# self.minimize_service_delay_in_district(service, district)
 		for machine in self._simulator.machines.values():
 			machine.startup()
 		for machine in self._simulator.machines.values():
@@ -232,10 +218,8 @@ class Dispatcher(object):
 				district = self._simulator.districts[district_id]
 				service = self._simulator.services[service_id]
 				num = self.get_service_spots_num_in_district(service, district)
-				self.combination(self._simulator, service_id, district_id, num)
+				self.combination(service, district, num)
 
-		# requests = [r for m in self._simulator.machines.values() for r in m.serving_request]
-		# requests += self._simulator.backend.serving_request
 		for machine in self._simulator.machines.values():
 			machine.startup()
 		for machine in self._simulator.machines.values():

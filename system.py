@@ -145,15 +145,16 @@ class Machine(CommonObject):
 	def set_service_server(self, service, server):
 		self._service_server[service.unique_id] = server
 
-	def startup(self, service_id=None):
+	def startup(self, service_id=None, test=True):
 		for request in self._request_queue:
 			if service_id is None or request.service.unique_id == service_id:
 				service = request.service
 				if service.unique_id in self._service_pool.keys() and service.consumed_bandwidth < self._cur_bandwidth:
-					self.serve_request(request)
+					if not test:
+						self.serve_request(request)
 					request.delay = self._simulator.local_delay
 
-	def find_nearest_machine(self, request, district_mode):
+	def find_nearest_machine(self, request, district_mode, test):
 		service = request.service
 		distance_row = self._simulator.distance_matrix[self.unique_id]
 		if district_mode:
@@ -169,27 +170,32 @@ class Machine(CommonObject):
 			server = self._simulator.machines[machine_id]
 			if service.unique_id in server.service_pool.keys() and service.consumed_bandwidth < server.cur_bandwidth:
 				if filtered_distance_row[machine_id] < self._simulator.backend.distance:
-					self.send_request(request, server)
+					if not test:
+						self.send_request(request, server)
+						server.receive_request(request)
+						server.serve_request(request)
 					request.delay = self._simulator.local_delay + filtered_distance_row[machine_id] * self._simulator.delay_distance_discount
-					server.receive_request(request)
-					server.serve_request(request)
+
 				else:
-					self.send_request(request, self._simulator.backend)
+					if not test:
+						self.send_request(request, self._simulator.backend)
+						self._simulator.backend.receive_request(request)
+						self._simulator.backend.serve_request(request)
 					request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
-					self._simulator.backend.receive_request(request)
-					self._simulator.backend.serve_request(request)
 				return True
 		return False
 
-	def ask_for_help(self, district_mode=False, service_id=None):
+	def ask_for_help(self, district_mode=False, service_id=None, test=True):
 		for request in self._request_queue:
 			if service_id is None or request.service.unique_id == service_id:
-				ret = self.find_nearest_machine(request, district_mode)
+				ret = self.find_nearest_machine(request, district_mode, test=test)
 				if not ret:
-					self.send_request(request, self._simulator.backend)
+					if not test:
+						self.send_request(request, self._simulator.backend)
+						self._simulator.backend.receive_request(request)
+						self._simulator.backend.serve_request(request)
 					request.delay = self._simulator.local_delay + self._simulator.backend.distance * self._simulator.delay_distance_discount
-					self._simulator.backend.receive_request(request)
-					self._simulator.backend.serve_request(request)
+
 
 	@property
 	def district(self):

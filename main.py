@@ -11,7 +11,9 @@ import copy
 machine_num = 100
 service_num = 20
 request_num = 1000
-sim = Simulator(machine_num, service_num, request_num, np.sqrt(2) * 1000)
+backend_distance = np.sqrt(2) * 1000
+
+sim = Simulator(machine_num, service_num, request_num, backend_distance)
 
 machine_ram_generator = ram_generator_factory(1024, 1024*4)
 service_ram_generator = ram_generator_factory(128, 128*2)
