@@ -49,5 +49,5 @@ naive_dispatcher.delay_sum()
 # 代码结构限制使得这个调度器的sim不能使用拷贝
 dispatcher = Dispatcher(sim, 20, 100)
 dispatcher.stage_1()
-dispatcher.stage_2_ergodic()
-# dispatcher.stage_2()
+# dispatcher.stage_2_ergodic()
+dispatcher.stage_2()
